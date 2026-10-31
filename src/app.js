@@ -1,4 +1,5 @@
 const express = require('express');
+
 const path = require('path');
 const store = require('./store');
 
@@ -64,6 +65,38 @@ app.post('/expenses', (req, res) => {
     note: typeof body.note === 'string' ? body.note : '',
   });
   res.status(201).json(row);
+});
+
+// GET /expenses/export.csv?from=YYYY-MM-DD&to=YYYY-MM-DD
+app.get('/expenses/export.csv', (req, res) => {
+  const { from, to } = req.query;
+  if (!isValidDate(from) || !isValidDate(to)) {
+    return res.status(400).json({ error: 'from and to must be valid YYYY-MM-DD dates' });
+  }
+  if (from > to) {
+    return res.status(400).json({ error: 'from must not be later than to' });
+  }
+
+  const rows = store.readAll()
+    .filter((r) => r.date >= from && r.date <= to)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  function csvField(val) {
+    const s = String(val);
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  const lines = ['date,category,amount,note'];
+  for (const r of rows) {
+    lines.push(`${r.date},${r.category},${r.amount},${csvField(r.note)}`);
+  }
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="expenses-${from}-${to}.csv"`);
+  res.send(lines.join('\n') + '\n');
 });
 
 // --- routes end ---
